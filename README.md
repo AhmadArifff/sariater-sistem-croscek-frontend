@@ -248,12 +248,13 @@ Check code quality & formatting
 - Filter by date range
 - Export hasil croscek
 
-### 6. 📈 **Croscek Data Warehouse**
+### 6. 📈 **Croscek karyawan Daily Workere**
 ![Croscek DW](public/assets/image/tampilan-app/croscekkaryawandw.png)
-- Analisis mendalam vs data warehouse
-- Trend tracking long-term
-- Anomaly detection
-- Export comprehensive report
+- Upload data absensi (Excel/CSV)
+- Automatic mapping dengan jadwal
+- Hitung keterlambatan otomatis
+- Filter by date range
+- Export hasil croscek
 
 ### 7. 👨‍💼 **Manajemen User** (Admin Only)
 ![Manage User](public/assets/image/tampilan-app/manageuser.png)
