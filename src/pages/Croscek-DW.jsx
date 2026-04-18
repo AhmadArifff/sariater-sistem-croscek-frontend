@@ -10,7 +10,8 @@ import logoCompany from "../assets/Image/logo.jpg";
 
 
 export default function Croscek_DW() {
-  const API = "http://127.0.0.1:5000/api";
+  // const API = "http://127.0.0.1:5000/api";
+  const API = import.meta.env.VITE_API_URL;
 
   // PREVIEW FRONTEND
   const [jadwalPreview, setJadwalPreview] = useState("");
@@ -49,6 +50,25 @@ export default function Croscek_DW() {
   });
   const [showModalTambah, setShowModalTambah] = useState(false);
   const [loadingCRUD, setLoadingCRUD] = useState(false);
+
+  // TAMBAHAN: STATE UNTUK FORM BULK JADWAL SEBULAN (MULTI-EMPLOYEE)
+  const [showFormBulkJadwal, setShowFormBulkJadwal] = useState(false);
+  const [selectedMonthFormBulk, setSelectedMonthFormBulk] = useState(new Date().getMonth());
+  const [selectedYearFormBulk, setSelectedYearFormBulk] = useState(new Date().getFullYear());
+  const [selectedEmployeesFormBulk, setSelectedEmployeesFormBulk] = useState([]); // Array of { nik, nama }
+  const [jadwalFormEntriesByEmployee, setJadwalFormEntriesByEmployee] = useState({}); // { nik: { tanggal: kode_shift } }
+  const [currentEmployeeIndexFormBulk, setCurrentEmployeeIndexFormBulk] = useState(0); // Index karyawan yang sedang diedit
+  const [loadingFormBulk, setLoadingFormBulk] = useState(false);
+  const [showEmployeeDropdownBulk, setShowEmployeeDropdownBulk] = useState(false);
+  const [showBulkJadwalResult, setShowBulkJadwalResult] = useState(false);
+  const [bulkJadwalResult, setBulkJadwalResult] = useState({
+    success_count: 0,
+    fail_count: 0,
+    total_entries: 0,
+    success_list: [],
+    fail_list: [],
+    has_error: false
+  });
 
   // TAMBAHAN: LOAD DATA JADWAL KARYAWAN
   const loadJadwalKaryawan = async () => {
@@ -565,6 +585,121 @@ export default function Croscek_DW() {
     page * rowsPerPage
   );
 
+  // ============================================
+  // HELPER FUNCTIONS UNTUK FORM BULK JADWAL
+  // ============================================
+  const getDateHeadersForMonth = (month, year) => {
+    // Generate hari singkat dan tanggal untuk setiap hari dalam bulan
+    const dayShort = ["MG", "SN", "SL", "RB", "KM", "JM", "SB"];
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    
+    const headers = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = new Date(year, month, d);
+      const dayCode = dayShort[date.getDay()];
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      headers.push({
+        date: dateStr,
+        day: d,
+        dayCode: dayCode
+      });
+    }
+    return headers;
+  };
+
+  const handleBulkCreateJadwal = async () => {
+    if (selectedEmployeesFormBulk.length === 0) {
+      return alert("Tambahkan minimal satu karyawan!");
+    }
+
+    // Kumpulkan semua entries dari semua karyawan
+    const allEntries = [];
+    for (const employee of selectedEmployeesFormBulk) {
+      const employeeEntries = Object.entries(jadwalFormEntriesByEmployee[employee.nik] || {})
+        .filter(([_, kodeShift]) => kodeShift && kodeShift.trim() !== "")
+        .map(([tanggal, kodeShift]) => ({
+          nik: employee.nik || "",
+          nama: employee.nama,
+          tanggal: tanggal,
+          kode_shift: kodeShift.trim()
+        }));
+      allEntries.push(...employeeEntries);
+    }
+
+    if (allEntries.length === 0) {
+      return alert("Tambahkan minimal satu kode shift untuk salah satu karyawan!");
+    }
+
+    setLoadingFormBulk(true);
+    try {
+      let successCount = 0;
+      let failCount = 0;
+      const successList = [];
+      const failList = [];
+
+      // Submit setiap entry ke API
+      for (const entry of allEntries) {
+        try {
+          const res = await fetch(`${API}/jadwal-dw/create`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(entry),
+          });
+
+          if (!res.ok) {
+            const json = await res.json();
+            failCount++;
+            failList.push({
+              nama: entry.nama,
+              tanggal: entry.tanggal,
+              kode_shift: entry.kode_shift,
+              error: json.error || "Error tidak diketahui"
+            });
+          } else {
+            successCount++;
+            successList.push({
+              nama: entry.nama,
+              tanggal: entry.tanggal,
+              kode_shift: entry.kode_shift
+            });
+          }
+        } catch (e) {
+          failCount++;
+          failList.push({
+            nama: entry.nama,
+            tanggal: entry.tanggal,
+            kode_shift: entry.kode_shift,
+            error: e.message
+          });
+        }
+      }
+
+      // Set result state untuk modal
+      setBulkJadwalResult({
+        success_count: successCount,
+        fail_count: failCount,
+        total_entries: allEntries.length,
+        success_list: successList,
+        fail_list: failList,
+        has_error: failCount > 0
+      });
+      setShowBulkJadwalResult(true);
+
+      // Reset form jika ada yang berhasil
+      if (successCount > 0) {
+        setShowFormBulkJadwal(false);
+        setJadwalFormEntriesByEmployee({});
+        setSelectedEmployeesFormBulk([]);
+        setCurrentEmployeeIndexFormBulk(0);
+        loadJadwalKaryawan();
+      }
+    } catch (e) {
+      alert("Error saat submit: " + e.message);
+    } finally {
+      setLoadingFormBulk(false);
+    }
+  };
+
   // TAMBAHAN: CRUD HANDLERS UNTUK JADWAL KARYAWAN (DISESUAIKAN DENGAN nik MANUAL)
   const handleCreate = async () => {
     if (!newData.nama || !newData.kode_shift || !newData.tanggal)
@@ -686,19 +821,64 @@ export default function Croscek_DW() {
 
   const loadKodeShiftOptions = async () => {
     try {
-      const res = await fetch(`${API}/informasi-jadwal/list`);
+      // Fetch all data - try with large limit value
+      const res = await fetch(`${API}/informasi-jadwal/list?limit=100&page=1`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       
-      // Validasi: pastikan data adalah array
-      if (!Array.isArray(data)) {
-        console.warn("Data kode shift bukan array:", data);
+      console.log("DEBUG - Raw API Response:", data);
+      console.log("DEBUG - Total available:", data.total);
+      
+      // Handle wrapped response: { data: [...], total: 43 }
+      let dataArray = [];
+      if (Array.isArray(data)) {
+        dataArray = data;
+      } else if (data?.data && Array.isArray(data.data)) {
+        dataArray = data.data;
+      } else {
+        dataArray = [];
+      }
+      
+      console.log("DEBUG - Extracted data array (length:", dataArray.length, ")");
+      
+      // If we got less than total, need to fetch remaining pages
+      if (data.total && dataArray.length < data.total) {
+        console.log("DEBUG - Need to fetch remaining pages. Total:", data.total, "Got:", dataArray.length);
+        
+        // Calculate remaining pages
+        const pageSize = dataArray.length;
+        const totalPages = Math.ceil(data.total / pageSize);
+        
+        // Fetch remaining pages
+        for (let page = 2; page <= totalPages; page++) {
+          try {
+            const resPage = await fetch(`${API}/informasi-jadwal/list?limit=${pageSize}&page=${page}`);
+            if (resPage.ok) {
+              const dataPage = await resPage.json();
+              if (dataPage?.data && Array.isArray(dataPage.data)) {
+                dataArray.push(...dataPage.data);
+                console.log("DEBUG - Fetched page", page, "- total now:", dataArray.length);
+              }
+            }
+          } catch (pageErr) {
+            console.warn("DEBUG - Error fetching page", page, ":", pageErr);
+          }
+        }
+      }
+      
+      if (!dataArray || dataArray.length === 0) {
+        console.warn("Data kode shift kosong");
         setKodeShiftOptions([]);
         return;
       }
       
-      // misal backend mengembalikan array objek { kode_shift: "A", keterangan: "Shift Pagi" }
-      setKodeShiftOptions(data.map(item => item.kode_shift));
+      // Extract kode values from each item
+      const kodes = dataArray
+        .map(item => (item.kode || item.kode_shift || "").trim())
+        .filter(k => k.length > 0);
+      
+      console.log("DEBUG - Final kodes array (length:", kodes.length, "):", kodes);
+      setKodeShiftOptions(kodes);
     } catch (e) {
       console.error("Error loading kode shift:", e);
       alert("Gagal load kode shift: " + e.message);
@@ -3196,11 +3376,6 @@ export default function Croscek_DW() {
   useEffect(() => {
     fetchCroscekFinal();
   }, []);
-
-
-
-  // toggle menu tambah dan kosongkan data jadwal karyawan
-  const [showActionMenu, setShowActionMenu] = useState(false);  
 
 
   // === UPDATED Export Rekap Perhari dengan filter shift E1, E2, E3, 1, 1A ===
@@ -5925,9 +6100,19 @@ const handlePreviewDailyWorker = () => {
                     setShowModalTambah(true);
                     setShowActionMenu(false);
                   }}
-                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 border-b"
                 >
                   ➕ Tambah Jadwal
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowFormBulkJadwal(true);
+                    setShowActionMenu(false);
+                  }}
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-2 border-b text-blue-600"
+                >
+                  📅 Tambah Jadwal Sebulan
                 </button>
 
                 <button
@@ -6203,6 +6388,407 @@ const handlePreviewDailyWorker = () => {
                 disabled={loadingCRUD}
               >
                 Simpan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL FORM BULK JADWAL SEBULAN - MULTI EMPLOYEE */}
+      {showFormBulkJadwal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="p-6 border-b flex justify-between items-center bg-blue-600">
+              <h3 className="text-2xl font-bold text-white">📅 Tambah Jadwal Karyawan Sebulan (Multi)</h3>
+              <button
+                onClick={() => {
+                  setShowFormBulkJadwal(false);
+                  setJadwalFormEntriesByEmployee({});
+                  setSelectedEmployeesFormBulk([]);
+                  setCurrentEmployeeIndexFormBulk(0);
+                }}
+                className="text-2xl font-bold text-white hover:bg-blue-500 p-2 rounded"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-auto p-6">
+              {/* Section 1: Month & Year Selection */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                {/* Month Selector */}
+                <div>
+                  <label className="block text-sm font-medium mb-2">Bulan</label>
+                  <select
+                    value={selectedMonthFormBulk}
+                    onChange={(e) => {
+                      setSelectedMonthFormBulk(parseInt(e.target.value));
+                    }}
+                    className="w-full border rounded-lg px-3 py-2"
+                  >
+                    {["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"].map((m, i) => (
+                      <option key={i} value={i}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Year Selector */}
+                <div>
+                  <label className="block text-sm font-medium mb-2">Tahun</label>
+                  <input
+                    type="number"
+                    value={selectedYearFormBulk}
+                    onChange={(e) => {
+                      setSelectedYearFormBulk(parseInt(e.target.value));
+                    }}
+                    className="w-full border rounded-lg px-3 py-2"
+                  />
+                </div>
+              </div>
+
+              {/* Section 2: Employee Selection & Management */}
+              <div className="mb-6 border-2 border-blue-300 rounded-lg p-4 bg-blue-50">
+                <h4 className="font-bold mb-3 text-gray-800">Daftar Karyawan</h4>
+                
+                {/* Selected Employees List */}
+                {selectedEmployeesFormBulk.length > 0 && (
+                  <div className="mb-4 flex flex-wrap gap-2">
+                    {selectedEmployeesFormBulk.map((emp, idx) => (
+                      <div
+                        key={emp.nik}
+                        onClick={() => setCurrentEmployeeIndexFormBulk(idx)}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition ${
+                          currentEmployeeIndexFormBulk === idx
+                            ? "bg-blue-600 text-white"
+                            : "bg-white border-2 border-blue-400 text-gray-700 hover:bg-blue-100"
+                        }`}
+                      >
+                        <span className="font-semibold">{emp.nama}</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedEmployeesFormBulk(
+                              selectedEmployeesFormBulk.filter((_, i) => i !== idx)
+                            );
+                            // Update entries object
+                            const newEntries = { ...jadwalFormEntriesByEmployee };
+                            delete newEntries[emp.nik];
+                            setJadwalFormEntriesByEmployee(newEntries);
+                            // Adjust current index
+                            if (currentEmployeeIndexFormBulk >= selectedEmployeesFormBulk.length - 1) {
+                              setCurrentEmployeeIndexFormBulk(Math.max(0, selectedEmployeesFormBulk.length - 2));
+                            }
+                          }}
+                          className="ml-2 text-lg font-bold hover:opacity-70"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add Employee Dropdown */}
+                <div className="relative">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="+ Tambah Karyawan..."
+                      className="w-full border-2 border-blue-400 rounded-lg px-3 py-2 cursor-pointer focus:outline-none focus:border-blue-600 focus:bg-white"
+                      readOnly
+                      onClick={() => setShowEmployeeDropdownBulk(!showEmployeeDropdownBulk)}
+                    />
+                    {showEmployeeDropdownBulk && (
+                      <div className="absolute z-50 bg-white border-2 border-blue-400 rounded-lg mt-1 w-full max-h-64 overflow-y-auto shadow-lg">
+                        {uniqueKaryawan
+                          .filter(
+                            item =>
+                              !selectedEmployeesFormBulk.some(emp => emp.nik === item.nik)
+                          )
+                          .map((item, idx) => (
+                            <div
+                              key={idx}
+                              className="p-2 hover:bg-blue-100 cursor-pointer text-sm border-b"
+                              onClick={() => {
+                                setSelectedEmployeesFormBulk([
+                                  ...selectedEmployeesFormBulk,
+                                  item
+                                ]);
+                                setShowEmployeeDropdownBulk(false);
+                                // Initialize entries untuk karyawan baru
+                                const headers = getDateHeadersForMonth(
+                                  selectedMonthFormBulk,
+                                  selectedYearFormBulk
+                                );
+                                const newEntries = {};
+                                headers.forEach(h => {
+                                  newEntries[h.date] = "";
+                                });
+                                setJadwalFormEntriesByEmployee({
+                                  ...jadwalFormEntriesByEmployee,
+                                  [item.nik]: newEntries
+                                });
+                                setCurrentEmployeeIndexFormBulk(
+                                  selectedEmployeesFormBulk.length
+                                );
+                              }}
+                            >
+                              <div className="font-semibold">{item.nama}</div>
+                              <div className="text-xs text-gray-500">
+                                {item.nik}
+                              </div>
+                            </div>
+                          ))}
+                        {uniqueKaryawan.filter(
+                          item =>
+                            !selectedEmployeesFormBulk.some(emp => emp.nik === item.nik)
+                        ).length === 0 && (
+                          <div className="p-3 text-center text-gray-500 text-sm">
+                            Semua karyawan sudah dipilih
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 3: Grid Input - Switchable per Employee */}
+              {selectedEmployeesFormBulk.length > 0 && (
+                <div className="border rounded-lg p-4 bg-gray-50">
+                  {/* Employee Info */}
+                  <div className="mb-3 pb-3 border-b">
+                    <p className="text-sm text-gray-600">
+                      Edit jadwal untuk:{" "}
+                      <span className="font-bold text-gray-800">
+                        {selectedEmployeesFormBulk[currentEmployeeIndexFormBulk]?.nama}
+                      </span>{" "}
+                      ({
+                      selectedEmployeesFormBulk[currentEmployeeIndexFormBulk]?.nik}
+                      )
+                    </p>
+                  </div>
+
+                  <h4 className="font-bold mb-3 text-gray-800">
+                    Isi Kode Shift untuk Setiap Tanggal
+                  </h4>
+
+                  {/* Debug: Show available kodes */}
+                  {kodeShiftOptions.length === 0 && (
+                    <div className="mb-3 p-2 bg-yellow-100 border border-yellow-400 rounded text-xs text-yellow-800">
+                      ⚠️ Kode shift belum dimuat. Silakan refresh halaman atau coba lagi.
+                    </div>
+                  )}
+                  {kodeShiftOptions.length > 0 && (
+                    <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
+                      ✓ Kode shift tersedia: {kodeShiftOptions.join(", ")}
+                    </div>
+                  )}
+
+                  {/* Grid Header */}
+                  <div className="overflow-x-auto">
+                    <div
+                      className="grid gap-2"
+                      style={{
+                        gridTemplateColumns: `repeat(auto-fill, minmax(80px, 1fr))`
+                      }}
+                    >
+                      {getDateHeadersForMonth(
+                        selectedMonthFormBulk,
+                        selectedYearFormBulk
+                      ).map(header => {
+                        const currentEmpNik =
+                          selectedEmployeesFormBulk[currentEmployeeIndexFormBulk]
+                            ?.nik;
+                        const currentValue =
+                          jadwalFormEntriesByEmployee[currentEmpNik]?.[
+                            header.date
+                          ] || "";
+
+                        return (
+                          <div key={header.date} className="flex flex-col">
+                            {/* Header: Hari singkat */}
+                            <div className="text-center bg-blue-100 font-bold text-sm p-1 rounded-t">
+                              {header.dayCode}
+                            </div>
+                            {/* Header: Tanggal */}
+                            <div className="text-center bg-blue-50 text-xs p-1">
+                              {header.day}
+                            </div>
+                            {/* Select Dropdown for Shift Code */}
+                            <select
+                              value={currentValue}
+                              onChange={e => {
+                                const currentEmpNik =
+                                  selectedEmployeesFormBulk[
+                                    currentEmployeeIndexFormBulk
+                                  ]?.nik;
+                                setJadwalFormEntriesByEmployee({
+                                  ...jadwalFormEntriesByEmployee,
+                                  [currentEmpNik]: {
+                                    ...(jadwalFormEntriesByEmployee[
+                                      currentEmpNik
+                                    ] || {}),
+                                    [header.date]: e.target.value
+                                  }
+                                });
+                              }}
+                              className="border p-1 text-sm text-center rounded-b focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                            >
+                              <option value="">-</option>
+                              {kodeShiftOptions.map((kode, idx) => (
+                                <option key={idx} value={kode}>
+                                  {kode}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Info */}
+                  <div className="mt-3 text-sm text-gray-600 font-medium">
+                    Kode shift diisi:{" "}
+                    <span className="text-blue-600 font-bold">
+                      {Object.values(
+                        jadwalFormEntriesByEmployee[
+                          selectedEmployeesFormBulk[currentEmployeeIndexFormBulk]
+                            ?.nik
+                        ] || {}
+                      )
+                        .filter(v => v && v.trim() !== "").length}
+                    </span>{" "}
+                    dari{" "}
+                    {Object.keys(
+                      jadwalFormEntriesByEmployee[
+                        selectedEmployeesFormBulk[currentEmployeeIndexFormBulk]
+                          ?.nik
+                      ] || {}
+                    ).length}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t flex justify-end gap-3">
+              <button
+                className="px-6 py-2 bg-gray-300 rounded-lg hover:bg-gray-400"
+                onClick={() => {
+                  setShowFormBulkJadwal(false);
+                  setJadwalFormEntriesByEmployee({});
+                  setSelectedEmployeesFormBulk([]);
+                  setCurrentEmployeeIndexFormBulk(0);
+                }}
+              >
+                Batal
+              </button>
+              <button
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                onClick={handleBulkCreateJadwal}
+                disabled={
+                  loadingFormBulk || selectedEmployeesFormBulk.length === 0
+                }
+              >
+                {loadingFormBulk
+                  ? "⏳ Menyimpan..."
+                  : `✓ Simpan Jadwal (${selectedEmployeesFormBulk.length} karyawan)`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HASIL BULK JADWAL MODAL */}
+      {showBulkJadwalResult && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-96 overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className={`px-6 py-4 ${
+              bulkJadwalResult.has_error
+                ? 'bg-red-100 border-b-4 border-red-500'
+                : 'bg-green-100 border-b-4 border-green-500'
+            }`}>
+              <h2 className={`text-xl font-bold ${
+                bulkJadwalResult.has_error ? 'text-red-800' : 'text-green-800'
+              }`}>
+                {bulkJadwalResult.has_error
+                  ? '⚠️ Ada Jadwal yang Gagal'
+                  : '✅ Semua Jadwal Berhasil Disimpan'}
+              </h2>
+            </div>
+
+            {/* Stats Cards */}
+            <div className="px-6 py-4 bg-gray-50 border-b grid grid-cols-3 gap-3">
+              <div className="bg-white rounded-lg border-2 border-green-200 p-3 text-center">
+                <div className="text-2xl font-bold text-green-600">{bulkJadwalResult.success_count}</div>
+                <div className="text-xs text-gray-600 font-medium">Berhasil</div>
+              </div>
+              <div className="bg-white rounded-lg border-2 border-blue-200 p-3 text-center">
+                <div className="text-2xl font-bold text-blue-600">{bulkJadwalResult.fail_count}</div>
+                <div className="text-xs text-gray-600 font-medium">Gagal</div>
+              </div>
+              <div className="bg-white rounded-lg border-2 border-gray-200 p-3 text-center">
+                <div className="text-2xl font-bold text-gray-600">{bulkJadwalResult.total_entries}</div>
+                <div className="text-xs text-gray-600 font-medium">Total</div>
+              </div>
+            </div>
+
+            {/* Content - Scrollable */}
+            <div className="px-6 py-4 overflow-y-auto flex-1">
+              {/* Success List */}
+              {bulkJadwalResult.success_list.length > 0 && (
+                <div className="mb-4">
+                  <h3 className="font-bold text-green-700 text-sm mb-2">Berhasil Disimpan ({bulkJadwalResult.success_list.length})</h3>
+                  <div className="max-h-32 overflow-y-auto bg-green-50 rounded border-2 border-green-200">
+                    <table className="w-full text-xs">
+                      <tbody>
+                        {bulkJadwalResult.success_list.map((item, idx) => (
+                          <tr key={idx} className="border-b hover:bg-green-100">
+                            <td className="px-2 py-1">{item.nama}</td>
+                            <td className="px-2 py-1 text-center">{item.tanggal}</td>
+                            <td className="px-2 py-1 text-center font-bold text-green-600">{item.kode_shift}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Fail List */}
+              {bulkJadwalResult.fail_list.length > 0 && (
+                <div>
+                  <h3 className="font-bold text-red-700 text-sm mb-2">Gagal Disimpan ({bulkJadwalResult.fail_list.length})</h3>
+                  <div className="max-h-32 overflow-y-auto bg-red-50 rounded border-2 border-red-200">
+                    <table className="w-full text-xs">
+                      <tbody>
+                        {bulkJadwalResult.fail_list.map((item, idx) => (
+                          <tr key={idx} className="border-b hover:bg-red-100">
+                            <td className="px-2 py-1">{item.nama}</td>
+                            <td className="px-2 py-1 text-center">{item.tanggal}</td>
+                            <td className="px-2 py-1 text-center font-bold text-red-600">{item.kode_shift}</td>
+                            <td className="px-2 py-1 text-red-600 text-right text-xs">{item.error}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-3 border-t bg-gray-50 flex justify-end gap-2">
+              <button
+                onClick={() => setShowBulkJadwalResult(false)}
+                className="px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-lg font-semibold transition"
+              >
+                Tutup
               </button>
             </div>
           </div>
