@@ -4272,6 +4272,58 @@ const buildFinalData = (source) =>
     fetchCroscekFinal();
   }, []);
 
+  // ════════════════════════════════════════════════════════════════════
+  // TRUNCATE CROSCEK - Hapus Semua Data Croscek
+  // ════════════════════════════════════════════════════════════════════
+  const handleTruncateCroscek = async () => {
+    // Confirmation dialog dengan warning yang tegas
+    const confirmed = window.confirm(
+      "⚠️ PERHATIAN!\n\n" +
+      "Anda akan menghapus SEMUA data croscek.\n" +
+      "Tindakan ini TIDAK DAPAT DIBATALKAN!\n\n" +
+      "Lanjutkan?"
+    );
+    
+    if (!confirmed) return;
+
+    // Double confirmation untuk keamanan
+    const doubleConfirm = window.confirm(
+      "🚨 KONFIRMASI AKHIR\n\n" +
+      "Semua data croscek akan dihapus secara permanen.\n" +
+      "Klik OK untuk melanjutkan atau Batal untuk membatalkan."
+    );
+
+    if (!doubleConfirm) return;
+
+    try {
+      const res = await fetch(`${API}/croscek-karyawan/clear`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        alert("❌ " + (result.error || "Gagal menghapus data croscek"));
+        return;
+      }
+
+      alert("✅ " + (result.message || "Semua data croscek berhasil dihapus!"));
+      
+      // Clear UI state
+      setCroscekData([]);
+      setRows([]);
+      setReasonMap({});
+      setPage(1);
+      
+      // Reload data
+      await fetchCroscekFinal();
+    } catch (err) {
+      console.error("Error truncating croscek:", err);
+      alert("❌ Error: " + err.message);
+    }
+  };
+
 
   // === UPDATED Export Rekap Perhari dengan filter shift E1, E2, E3, 1, 1A ===
   async function exportFilteredDatabyshift() {
@@ -7961,8 +8013,8 @@ const formatDate = (dateString) => {
             </div>
 
             {/* FOOTER */}
-            <div className="p-5 border-t-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white flex flex-wrap justify-between items-center gap-4">
-              {/* Grup tombol kiri */}
+            <div className="p-5 border-t-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white flex flex-col gap-3">
+              {/* Baris 1: Tombol Export */}
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={exportFilteredData}
@@ -8011,7 +8063,11 @@ const formatDate = (dateString) => {
                   >
                     <FileSpreadsheet size={16} /> Rekap Service
                   </button>
-                  
+              </div>
+
+              {/* Baris 2: Tombol Rekap + Action + Pagination */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={openHodModal}
                     className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-cyan-600 to-cyan-700 hover:from-cyan-700 hover:to-cyan-800 rounded-xl shadow-md hover:shadow-lg transition duration-300 transform hover:scale-105"
@@ -8035,37 +8091,45 @@ const formatDate = (dateString) => {
                     <FileSpreadsheet size={16} /> Rekap Uang Makan
                   </button>
 
-                <span className="h-8 w-px bg-gray-300 mx-2" />
+                  <span className="h-8 w-px bg-gray-300 mx-1" />
 
-                <button
-                  onClick={simpanCroscek}
-                  className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 rounded-xl shadow-md hover:shadow-lg transition duration-300 transform hover:scale-105 border-2 border-green-700"
-                >
-                  💾 Simpan Croscek
-                </button>
-              </div>
+                  <button
+                    onClick={simpanCroscek}
+                    className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 rounded-xl shadow-md hover:shadow-lg transition duration-300 transform hover:scale-105 border-2 border-green-700"
+                  >
+                    💾 Simpan Croscek
+                  </button>
 
-              {/* Navigasi halaman */}
-              <div className="flex items-center gap-3">
-                <button
-                  disabled={page === 1}
-                  onClick={() => setPage(page - 1)}
-                  className="px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded-lg font-semibold transition duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  ◀ Prev
-                </button>
+                  <button
+                    onClick={handleTruncateCroscek}
+                    className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 rounded-xl shadow-md hover:shadow-lg transition duration-300 transform hover:scale-105"
+                  >
+                    <Trash2 size={16} /> Kosongkan Croscek
+                  </button>
+                </div>
 
-                <span className="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg font-bold">
-                  {page} / {totalPages}
-                </span>
+                {/* Navigasi halaman - kanan saja */}
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  <button
+                    disabled={page === 1}
+                    onClick={() => setPage(page - 1)}
+                    className="px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded-lg font-semibold transition duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    ◀ Prev
+                  </button>
 
-                <button
-                  disabled={page === totalPages}
-                  onClick={() => setPage(page + 1)}
-                  className="px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded-lg font-semibold transition duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Next ▶
-                </button>
+                  <span className="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg font-bold">
+                    {page} / {totalPages}
+                  </span>
+
+                  <button
+                    disabled={page === totalPages}
+                    onClick={() => setPage(page + 1)}
+                    className="px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded-lg font-semibold transition duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Next ▶
+                  </button>
+                </div>
               </div>
             </div>
           </div>
