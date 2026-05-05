@@ -1,7 +1,7 @@
 // src/pages/Croscek.jsx
 // import { useState, useEffect } from "react";
 import { useState, useEffect, useMemo } from "react";
-import { UploadCloud, FileSpreadsheet, ArrowRight, Search, X, Plus, Trash2, Download } from "lucide-react";
+import { UploadCloud, FileSpreadsheet, ArrowRight, Search, X, Plus, Trash2, Download, Calendar, Users, Clock, CheckCircle, AlertCircle } from "lucide-react";
 import * as XLSX from "xlsx";
 import sariAter from "../assets/sari-ater.png";
 import ExcelJS from "exceljs";
@@ -10,7 +10,7 @@ import logoCompany from "../assets/Image/logo.jpg";
 
 
 export default function Croscek_DW() {
-  const API = "http://127.0.0.1:5000/api";
+  const API = import.meta.env.VITE_API_URL;
 
   // PREVIEW FRONTEND
   const [jadwalPreview, setJadwalPreview] = useState("");
@@ -31,11 +31,17 @@ export default function Croscek_DW() {
   // MODAL PREVIEW CROSCEK
   const [showModal, setShowModal] = useState(false);
 
+  // MODAL HASIL IMPORT
+  const [showImportResult, setShowImportResult] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const [showJadwalImportResult, setShowJadwalImportResult] = useState(false);
+  const [jadwalImportResult, setJadwalImportResult] = useState(null);
+
   // PAGINATION & SEARCH
   const [rows, setRows] = useState([]);   // SEMUA DATA
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const rowsPerPage = 15; // Tetap gunakan ini, bukan itemsPerPage
+  const rowsPerPage = 30; // Updated to match Croscek.jsx for better visibility
 
   // TAMBAHAN: STATE UNTUK FILTER TANGGAL (diperlukan untuk input tanggal awal dan akhir)
   const [startDate, setStartDate] = useState(''); // State untuk tanggal awal
@@ -68,6 +74,7 @@ export default function Croscek_DW() {
     fail_list: [],
     has_error: false
   });
+  const [showActionMenu, setShowActionMenu] = useState(false);
 
   // TAMBAHAN: LOAD DATA JADWAL KARYAWAN
   const loadJadwalKaryawan = async () => {
@@ -179,6 +186,22 @@ export default function Croscek_DW() {
     const file = e.target.files[0];
     if (!file) return;
 
+    // Validasi file type
+    const isXlsx = file.name.endsWith('.xlsx') || file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const isXls = file.name.endsWith('.xls') || file.type === 'application/vnd.ms-excel';
+    
+    if (isXls) {
+      alert('❌ File format tidak didukung!\n\nFile adalah .xls (Excel 97-2003).\n\nSilakan:\n1. Buka file di Microsoft Excel\n2. Save As → Format: Excel Workbook (.xlsx)\n3. Upload file .xlsx yang sudah di-convert\n\nAtau gunakan template dari aplikasi ini.');
+      e.target.value = ''; // Reset file input
+      return;
+    }
+    
+    if (!isXlsx) {
+      alert('❌ File format tidak didukung!\n\nHanya file .xlsx yang diterima.\n\nFormat yang didukung: .xlsx (Excel 2007+)');
+      e.target.value = ''; // Reset file input
+      return;
+    }
+
     setLoadingJadwal(true);
     setJadwalFile(file);
 
@@ -206,6 +229,7 @@ export default function Croscek_DW() {
 
       setJadwalPreview(html);
     } catch (err) {
+      console.error("Error reading jadwal file:", err);
       alert("Gagal membaca file jadwal");
     }
 
@@ -311,13 +335,28 @@ export default function Croscek_DW() {
 
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || "Gagal menyimpan jadwal");
+        console.error("Error saving jadwal:", data);
+        setJadwalImportResult({
+          success: false,
+          message: data.error || "Gagal menyimpan jadwal"
+        });
+        setShowJadwalImportResult(true);
         return;
       }
-      alert(data.message || "Berhasil menyimpan jadwal");
+      
+      setJadwalImportResult({
+        success: true,
+        message: data.message || "Berhasil menyimpan jadwal"
+      });
+      setShowJadwalImportResult(true);
       loadJadwalKaryawan(); // Reload data setelah save
     } catch (err) {
-      alert("Error saat menyimpan jadwal: " + err.message);
+      console.error("Error during jadwal save:", err);
+      setJadwalImportResult({
+        success: false,
+        message: "Error saat menyimpan jadwal: " + err.message
+      });
+      setShowJadwalImportResult(true);
     }
     setSavingJadwal(false);
   }
@@ -329,6 +368,22 @@ export default function Croscek_DW() {
   async function handleUploadKehadiran(e) {
     const file = e.target.files[0];
     if (!file) return;
+
+    // Validasi file type
+    const isXlsx = file.name.endsWith('.xlsx') || file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const isXls = file.name.endsWith('.xls') || file.type === 'application/vnd.ms-excel';
+    
+    if (isXls) {
+      alert('❌ File format tidak didukung!\n\nFile adalah .xls (Excel 97-2003).\n\nSilakan:\n1. Buka file di Microsoft Excel\n2. Save As → Format: Excel Workbook (.xlsx)\n3. Upload file .xlsx yang sudah di-convert\n\nAtau gunakan template dari aplikasi ini.');
+      e.target.value = ''; // Reset file input
+      return;
+    }
+    
+    if (!isXlsx) {
+      alert('❌ File format tidak didukung!\n\nHanya file .xlsx yang diterima.\n\nFormat yang didukung: .xlsx (Excel 2007+)');
+      e.target.value = ''; // Reset file input
+      return;
+    }
 
     setLoadingKehadiran(true);
     setKehadiranFile(file);
@@ -350,6 +405,7 @@ export default function Croscek_DW() {
 
       setKehadiranPreview(htmlAll);
     } catch (err) {
+      console.error("Error reading kehadiran file:", err);
       alert("Gagal membaca file kehadiran");
     }
 
@@ -358,6 +414,13 @@ export default function Croscek_DW() {
 
   async function saveKehadiran() {
       if (!kehadiranFile) return alert("Upload file dulu!");
+
+      // Double-check file type before upload
+      const isXlsx = kehadiranFile.name.endsWith('.xlsx') || kehadiranFile.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      if (!isXlsx) {
+          alert('❌ File format tidak didukung!\n\nHanya file .xlsx yang diterima.');
+          return;
+      }
 
       setSavingKehadiran(true);
 
@@ -374,15 +437,30 @@ export default function Croscek_DW() {
 
           // CEK STATUS RESPONSE
           if (!res.ok) {
-              alert(data.error || "Gagal menyimpan kehadiran!");
+              console.error("Error saving kehadiran:", data);
+              setImportResult({
+                  success: false,
+                  message: data.error || "Gagal menyimpan kehadiran!"
+              });
+              setShowImportResult(true);
               setSavingKehadiran(false);
               return;
           }
 
-          // Status OK → tampilkan pesan sukses
-          alert(data.message || "Kehadiran berhasil disimpan");
+          // Status OK → tampilkan pesan sukses dengan modal
+          setImportResult({
+              success: true,
+              message: data.message || "Kehadiran berhasil disimpan"
+          });
+          setShowImportResult(true);
+          loadAvailablePeriods(); // Reload periods setelah save
       } catch (e) {
-          alert("Error saat menyimpan kehadiran: " + e.message);
+          console.error("Error during kehadiran save:", e);
+          setImportResult({
+              success: false,
+              message: "Error saat menyimpan kehadiran: " + e.message
+          });
+          setShowImportResult(true);
       }
 
       setSavingKehadiran(false);
@@ -452,13 +530,25 @@ export default function Croscek_DW() {
       const data = await res.json();
       setAvailablePeriods(data.periods || []);
 
-      // Auto-select periode terbaru
-      if (data.periods?.length > 0) {
-        setSelectedMonthKehadiran(data.periods[0].bulan);
-        setSelectedYearKehadiran(data.periods[0].tahun);
+      // Auto-select periode terbaru, dengan smart retention dari periode current
+      const periods = data.periods || [];
+      const hasCurrentSelection = periods.some(
+        (period) =>
+          period.bulan === selectedMonthKehadiran &&
+          period.tahun === selectedYearKehadiran
+      );
+
+      if (!hasCurrentSelection && periods.length > 0) {
+        setSelectedMonthKehadiran(periods[0].bulan);
+        setSelectedYearKehadiran(periods[0].tahun);
       }
     } catch (e) {
-      alert("Gagal load periode kehadiran: " + e.message);
+      console.error("Error loading kehadiran periods:", e);
+      setImportResult({
+        success: false,
+        message: "Gagal load periode kehadiran: " + e.message
+      });
+      setShowImportResult(true);
     }
     setLoadingPeriods(false);
   };
@@ -470,7 +560,11 @@ export default function Croscek_DW() {
   // HAPUS PERIODE
   const handleDeleteKehadiranPeriod = async () => {
     if (!selectedMonthKehadiran || !selectedYearKehadiran) {
-      alert("Silakan pilih periode terlebih dahulu.");
+      setImportResult({
+        success: false,
+        message: "Silakan pilih periode terlebih dahulu."
+      });
+      setShowImportResult(true);
       return;
     }
 
@@ -491,14 +585,28 @@ export default function Croscek_DW() {
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data.error || "Gagal hapus periode");
+        console.error("Error deleting kehadiran period:", data);
+        setImportResult({
+          success: false,
+          message: data.error || "Gagal hapus periode"
+        });
+        setShowImportResult(true);
         return;
       }
 
-      alert(data.message);
+      setImportResult({
+        success: true,
+        message: data.message || "Periode berhasil dihapus"
+      });
+      setShowImportResult(true);
       loadAvailablePeriods();
     } catch (e) {
-      alert("Error saat hapus periode: " + e.message);
+      console.error("Error during kehadiran period deletion:", e);
+      setImportResult({
+        success: false,
+        message: "Error saat hapus periode: " + e.message
+      });
+      setShowImportResult(true);
     }
   };
 
@@ -536,7 +644,12 @@ export default function Croscek_DW() {
       setShowModal(true); // Tampilkan modal preview setelah selesai
       // setReasonMap({});
     } catch (err) {
-      alert("Gagal memproses croscek");
+      console.error("Error processing croscek:", err);
+      setImportResult({
+        success: false,
+        message: "Gagal memproses croscek: " + (err.message || "Unknown error")
+      });
+      setShowImportResult(true);
     }
 
     // Set progress ke 100% dan tutup modal setelah delay
@@ -608,7 +721,12 @@ export default function Croscek_DW() {
 
   const handleBulkCreateJadwal = async () => {
     if (selectedEmployeesFormBulk.length === 0) {
-      return alert("Tambahkan minimal satu karyawan!");
+      setImportResult({
+        success: false,
+        message: "Tambahkan minimal satu karyawan!"
+      });
+      setShowImportResult(true);
+      return;
     }
 
     // Kumpulkan semua entries dari semua karyawan
@@ -626,7 +744,12 @@ export default function Croscek_DW() {
     }
 
     if (allEntries.length === 0) {
-      return alert("Tambahkan minimal satu kode shift untuk salah satu karyawan!");
+      setImportResult({
+        success: false,
+        message: "Tambahkan minimal satu kode shift untuk salah satu karyawan!"
+      });
+      setShowImportResult(true);
+      return;
     }
 
     setLoadingFormBulk(true);
@@ -693,7 +816,12 @@ export default function Croscek_DW() {
         loadJadwalKaryawan();
       }
     } catch (e) {
-      alert("Error saat submit: " + e.message);
+      console.error("Error during bulk jadwal creation:", e);
+      setImportResult({
+        success: false,
+        message: "Error saat submit: " + e.message
+      });
+      setShowImportResult(true);
     } finally {
       setLoadingFormBulk(false);
     }
@@ -701,21 +829,49 @@ export default function Croscek_DW() {
 
   // TAMBAHAN: CRUD HANDLERS UNTUK JADWAL KARYAWAN (DISESUAIKAN DENGAN nik MANUAL)
   const handleCreate = async () => {
-    if (!newData.nama || !newData.kode_shift || !newData.tanggal)
-      return alert("Lengkapi data dulu, masa nambah jadwal tapi kosong? 😄");
+    if (!newData.nama || !newData.kode_shift || !newData.tanggal) {
+      setImportResult({
+        success: false,
+        message: "Lengkapi data dulu, masa nambah jadwal tapi kosong? 😄"
+      });
+      setShowImportResult(true);
+      return;
+    }
 
     setLoadingCRUD(true);
     try {
-      await fetch(`${API}/jadwal-dw/create`, {
+      const res = await fetch(`${API}/jadwal-dw/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newData),
       });
+      
+      if (!res.ok) {
+        const json = await res.json();
+        console.error("Error creating jadwal:", json);
+        setImportResult({
+          success: false,
+          message: json.error || "Gagal tambah jadwal"
+        });
+        setShowImportResult(true);
+        return;
+      }
+      
+      setImportResult({
+        success: true,
+        message: "Jadwal berhasil ditambahkan"
+      });
+      setShowImportResult(true);
       setShowModalTambah(false);
       setNewData({ nik: "", nama: "", tanggal: "", kode_shift: "" });
       loadJadwalKaryawan();
     } catch (e) {
-      alert("Gagal tambah: " + e.message);
+      console.error("Error during jadwal creation:", e);
+      setImportResult({
+        success: false,
+        message: "Gagal tambah: " + e.message
+      });
+      setShowImportResult(true);
     } finally {
       setLoadingCRUD(false);
     }
@@ -761,7 +917,12 @@ export default function Croscek_DW() {
           : []
       );
     } catch (e) {
-      alert("Gagal load list karyawan: " + e.message);
+      console.error("Error loading karyawan list:", e);
+      setImportResult({
+        success: false,
+        message: "Gagal load list karyawan: " + e.message
+      });
+      setShowImportResult(true);
     }
   };
 
@@ -786,7 +947,11 @@ export default function Croscek_DW() {
   const handleUpdate = async (nik) => {
     const data = jadwalKaryawanList.find(item => item.no === nik);
     if (!data) {
-      alert("Data tidak ditemukan");
+      setImportResult({
+        success: false,
+        message: "Data tidak ditemukan"
+      });
+      setShowImportResult(true);
       return;
     }
     try {
@@ -798,13 +963,28 @@ export default function Croscek_DW() {
       });
       if (!res.ok) {
         const json = await res.json();
-        alert("Gagal update: " + (json.error || res.statusText));
+        console.error("Error updating jadwal:", json);
+        setImportResult({
+          success: false,
+          message: "Gagal update: " + (json.error || res.statusText)
+        });
+        setShowImportResult(true);
         return;
       }
+      setImportResult({
+        success: true,
+        message: "Jadwal berhasil diperbarui"
+      });
+      setShowImportResult(true);
       setEditingId(null);
-      // await loadJadwalKaryawan();
+      loadJadwalKaryawan();
     } catch (e) {
-      alert("Update gagal: " + e.message);
+      console.error("Error during jadwal update:", e);
+      setImportResult({
+        success: false,
+        message: "Update gagal: " + e.message
+      });
+      setShowImportResult(true);
     } finally {
       setLoadingCRUD(false);
     }
@@ -880,7 +1060,11 @@ export default function Croscek_DW() {
       setKodeShiftOptions(kodes);
     } catch (e) {
       console.error("Error loading kode shift:", e);
-      alert("Gagal load kode shift: " + e.message);
+      setImportResult({
+        success: false,
+        message: "Gagal load kode shift: " + e.message
+      });
+      setShowImportResult(true);
     }
   };
 
@@ -897,12 +1081,27 @@ export default function Croscek_DW() {
       const res = await fetch(`${API}/jadwal-karyawan/delete/${nik}`, { method: "DELETE" });
       if (!res.ok) {
         const json = await res.json();
-        alert("Gagal hapus: " + (json.error || res.statusText));
+        console.error("Error deleting jadwal:", json);
+        setImportResult({
+          success: false,
+          message: "Gagal hapus: " + (json.error || res.statusText)
+        });
+        setShowImportResult(true);
         return;
       }
+      setImportResult({
+        success: true,
+        message: "Jadwal berhasil dihapus"
+      });
+      setShowImportResult(true);
       await loadJadwalKaryawan();
     } catch (e) {
-      alert("Hapus gagal: " + e.message);
+      console.error("Error during jadwal deletion:", e);
+      setImportResult({
+        success: false,
+        message: "Hapus gagal: " + e.message
+      });
+      setShowImportResult(true);
     }
   };
 
@@ -912,7 +1111,7 @@ export default function Croscek_DW() {
   // const rowsPerPageJadwal = 10;
 
   const [pageJadwal, setPageJadwal] = useState(1);
-  const [rowsPerPageJadwal, setRowsPerPageJadwal] = useState(10); // default 10
+  const [rowsPerPageJadwal, setRowsPerPageJadwal] = useState(30); // Updated to 30 for consistency with Croscek.jsx
 
 
   // 📌 FILTER BULAN–TAHUN UNTUK JADWAL KARYAWAN
@@ -7911,7 +8110,77 @@ const handlePreviewDailyWorker = () => {
       </div>
     )}
 
+    {/* MODAL PROGRESS CROSCEK */}
+    {showProgressModal && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+          <h3 className="text-lg font-bold text-gray-800 mb-4">Memproses Data Croscek...</h3>
+          <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden mb-4">
+            <div
+              className="bg-blue-600 h-full transition-all duration-300 ease-out"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <p className="text-sm text-gray-600 text-center">{progress}%</p>
+        </div>
+      </div>
+    )}
 
+    {/* MODAL HASIL IMPORT KEHADIRAN */}
+    {showImportResult && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+          <div className="flex items-center gap-3 mb-4">
+            {importResult?.success ? (
+              <>
+                <CheckCircle className="text-green-600" size={24} />
+                <h3 className="text-lg font-bold text-green-600">Sukses</h3>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="text-red-600" size={24} />
+                <h3 className="text-lg font-bold text-red-600">Gagal</h3>
+              </>
+            )}
+          </div>
+          <p className="text-gray-700 mb-6">{importResult?.message}</p>
+          <button
+            onClick={() => setShowImportResult(false)}
+            className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 font-medium"
+          >
+            Tutup
+          </button>
+        </div>
+      </div>
+    )}
+
+    {/* MODAL HASIL IMPORT JADWAL */}
+    {showJadwalImportResult && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+          <div className="flex items-center gap-3 mb-4">
+            {jadwalImportResult?.success ? (
+              <>
+                <CheckCircle className="text-green-600" size={24} />
+                <h3 className="text-lg font-bold text-green-600">Sukses</h3>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="text-red-600" size={24} />
+                <h3 className="text-lg font-bold text-red-600">Gagal</h3>
+              </>
+            )}
+          </div>
+          <p className="text-gray-700 mb-6">{jadwalImportResult?.message}</p>
+          <button
+            onClick={() => setShowJadwalImportResult(false)}
+            className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 font-medium"
+          >
+            Tutup
+          </button>
+        </div>
+      </div>
+    )}
 
     </div>
   );
